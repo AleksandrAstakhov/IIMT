@@ -1,0 +1,45 @@
+defaults:
+  - _self_
+
+env_file: .env
+
+paths:
+  output_dir: ${oc.env:DATASET_DIR,tmdb_dataset}
+
+pipeline:
+  steps: [mine, split, push]
+
+miner:
+  groups: [movie.poster, tv.poster]
+  source_language: en
+  target_language: all
+  target_families: ${oc.decode:${oc.env:TARGET_FAMILIES,1000}}
+  max_candidates_per_language: 5
+  max_phash_distance: 25
+  requests_per_second: ${oc.decode:${oc.env:REQUESTS_PER_SECOND,8}}
+  image_size: w780
+  candidate_image_size: w342
+  min_vote_count: 20
+  max_discover_page: 500
+  strict_target: false
+
+split:
+  train: 0.90
+  validation: 0.05
+  test: 0.05
+  seed: 42
+
+hf:
+  repo: null
+  private: true
+  export_id: default
+  rows_per_shard: 5000
+
+telegram:
+  progress_every: ${oc.decode:${oc.env:TELEGRAM_PROGRESS_EVERY,100}}
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: outputs/hydra/${now:%Y-%m-%d}/${now:%H-%M-%S}
