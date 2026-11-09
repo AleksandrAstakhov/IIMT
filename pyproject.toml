@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tmdb-iimt-miner"
 version = "0.1.0"
-description = "Resumable multilingual poster mining from TMDB with Hugging Face export"
+description = "IIMT dataset mining and training-ready multilingual synthesis toolkit"
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
 dependencies = [
@@ -27,9 +27,10 @@ dev = [
 
 [project.scripts]
 tmdb-iimt-mine = "run_miner:main"
+iimt-synthesize = "synthesize_pairs:main"
 
 [tool.setuptools]
-py-modules = ["tmdb_asset_miner", "tmdb_pair_miner", "run_miner"]
+py-modules = ["tmdb_asset_miner", "tmdb_pair_miner", "run_miner", "synthesize_pairs"]
 
 [tool.setuptools.packages.find]
 include = ["tmdb_iimt_miner*"]

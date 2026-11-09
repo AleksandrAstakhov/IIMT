@@ -28,6 +28,8 @@ dist/
 
 # Miner data and Hydra runs
 /tmdb_dataset/
+/synthetic_dataset/
+/synthetic_test/
 /outputs/
 /multirun/
 *.sqlite

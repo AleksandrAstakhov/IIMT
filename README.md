@@ -173,3 +173,60 @@ docker run --rm \
 
 Каталог с SQLite и изображениями обязательно должен находиться на постоянном
 диске или volume.
+
+## Synthetic IIMT dataset
+
+Независимый Hydra-pipeline создаёт мультиязычные варианты на общей Bezier-кривой,
+проверяет датасет и при необходимости публикует его в Hugging Face.
+
+```bash
+uv sync --extra dev
+uv run iimt-synthesize
+```
+
+Собственные мультиязычные группы передаются в JSONL:
+
+```json
+{"family_id":"example-1","translations":{"en":"Summer sale","ru":"Летняя распродажа"}}
+```
+
+```bash
+uv run iimt-synthesize \
+  input.translations=/data/translations.jsonl \
+  input.backgrounds_dir=/data/backgrounds \
+  output.dir=synthetic_dataset \
+  generation.variants_per_family=3
+```
+
+Выход содержит:
+
+```text
+synthetic_dataset/
+├── assets.jsonl
+├── pairs.jsonl
+├── images/
+├── backgrounds/
+├── glyph_masks/
+├── region_masks/
+└── baseline_masks/
+```
+
+Split назначается по исходному `base_family_id`, поэтому языки и варианты одной
+фразы не пересекаются между train, validation и test. `validate` проверяет ID,
+файлы, размеры, общую геометрию, маски, пары и split leakage.
+
+Публикация создаёт две HF-конфигурации: `assets` с изображениями и supervision,
+и `pairs` с лёгким индексом направленных пар:
+
+```bash
+export HF_TOKEN=hf_...
+export HF_DATASET_REPO=username/iimt-synthetic
+
+uv run iimt-synthesize \
+  'pipeline.steps=[validate,push]' \
+  output.dir=synthetic_dataset
+```
+
+Hydra-конфиг находится в `tmdb_iimt_miner/conf/synthesize.yaml`. Текущий renderer
+поддерживает латиницу, кириллицу, греческий, CJK и корейский; сложные RTL/shaping
+письменности по умолчанию пропускаются, чтобы не загрязнять обучающие данные.
