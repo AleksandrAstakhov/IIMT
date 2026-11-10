@@ -72,6 +72,14 @@ def test_family_id_is_stable() -> None:
     assert len(first) == 24
 
 
+def test_local_catalog_can_open_without_tmdb_credentials(tmp_path: Path) -> None:
+    miner = TMDBAssetMiner(
+        MinerConfig(output_dir=tmp_path, groups=("movie.poster",)),
+    )
+    assert miner._asset_count() == 0
+    miner.close()
+
+
 def test_hf_record_embeds_image_bytes(tmp_path: Path) -> None:
     miner = make_miner(tmp_path)
     image_path = tmp_path / "images" / "00" / "asset.jpg"

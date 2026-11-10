@@ -108,8 +108,6 @@ class TMDBAssetMiner:
     }
 
     def __init__(self, config: MinerConfig, *, api_key: str | None = None, bearer_token: str | None = None):
-        if not api_key and not bearer_token:
-            raise ValueError("Pass api_key or bearer_token")
         if config.requests_per_second <= 0:
             raise ValueError("requests_per_second must be positive")
         self.config, self.api_key, self.bearer_token = config, api_key, bearer_token
@@ -592,8 +590,10 @@ class TMDBAssetMiner:
         params, headers = dict(params or {}), {"Accept": "application/json"}
         if self.api_key:
             params["api_key"] = self.api_key
-        else:
+        elif self.bearer_token:
             headers["Authorization"] = f"Bearer {self.bearer_token}"
+        else:
+            raise RuntimeError("TMDB credentials are required for API requests")
         for attempt in range(8):
             wait = 1 / self.config.requests_per_second - (time.monotonic() - self._last_request)
             if wait > 0:

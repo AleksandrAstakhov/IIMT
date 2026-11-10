@@ -40,12 +40,12 @@ def as_list(value: ListConfig | list | tuple) -> list[str]:
 def main(cfg: DictConfig) -> None:
     load_env(Path(to_absolute_path(str(cfg.env_file))))
 
+    steps = as_list(cfg.pipeline.steps)
     tmdb_api_key = os.getenv("TMDB_API_KEY")
     tmdb_bearer_token = os.getenv("TMDB_BEARER_TOKEN")
-    if not tmdb_api_key and not tmdb_bearer_token:
+    if "mine" in steps and not tmdb_api_key and not tmdb_bearer_token:
         raise SystemExit("Set TMDB_API_KEY or TMDB_BEARER_TOKEN in .env")
 
-    steps = as_list(cfg.pipeline.steps)
     groups = as_list(cfg.miner.groups)
     output_dir = Path(to_absolute_path(str(cfg.paths.output_dir)))
     hf_repo = str(cfg.hf.repo or os.getenv("HF_DATASET_REPO", "")).strip()
