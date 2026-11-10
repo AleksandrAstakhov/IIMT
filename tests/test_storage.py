@@ -24,10 +24,24 @@ def test_catalog_survives_reopen_and_rejects_duplicate_id(tmp_path: Path) -> Non
             (family_id, "movie.poster", 671, "complete", now),
         )
         row = (
-            asset_id, family_id, "movie.poster", "movie", "poster", 671,
-            "Harry Potter", "Harry Potter", "2001-11-16", "en",
-            f"images/{asset_id[:2]}/{asset_id}.jpg", "/poster.jpg",
-            1000, 1500, 0, None, 1, now,
+            asset_id,
+            family_id,
+            "movie.poster",
+            "movie",
+            "poster",
+            671,
+            "Harry Potter",
+            "Harry Potter",
+            "2001-11-16",
+            "en",
+            f"images/{asset_id[:2]}/{asset_id}.jpg",
+            "/poster.jpg",
+            1000,
+            1500,
+            0,
+            None,
+            1,
+            now,
         )
         miner.connection.execute(
             "INSERT INTO assets VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -56,3 +70,26 @@ def test_family_id_is_stable() -> None:
     assert first == second
     assert first != other
     assert len(first) == 24
+
+
+def test_hf_record_embeds_image_bytes(tmp_path: Path) -> None:
+    miner = make_miner(tmp_path)
+    image_path = tmp_path / "images" / "00" / "asset.jpg"
+    image_path.parent.mkdir(parents=True)
+    payload = b"jpeg-payload"
+    image_path.write_bytes(payload)
+
+    record = miner._hf_record(
+        {
+            "id": "asset",
+            "group_name": "movie.poster",
+            "image_path": "images/00/asset.jpg",
+            "all_languages_mined": 1,
+        }
+    )
+
+    assert record["image"] == {"bytes": payload, "path": "asset.jpg"}
+    assert record["group"] == "movie.poster"
+    assert record["all_languages_mined"] is True
+    assert "image_path" not in record
+    miner.close()

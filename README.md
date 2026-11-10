@@ -21,11 +21,19 @@ machine translation. Майнер ищет визуально совпадающ
 
 ```text
 .
-├── tmdb_asset_miner.py       # майнер, SQLite и HF-export
-├── tmdb_pair_miner.py        # совместимость со старым импортом
-├── run_miner.py              # Hydra entrypoint: mine → split → push
-├── tmdb_iimt_miner/
-│   └── conf/miner.yaml       # основной Hydra-конфиг
+├── iimt/
+│   ├── conf/                 # Hydra-конфиги обоих pipeline
+│   ├── miner/
+│   │   ├── core.py           # TMDB, SQLite, дедупликация и HF-export
+│   │   └── cli.py            # mine → split → push
+│   └── synthetic/
+│       ├── prepare.py        # подготовка мультиязычных текстовых family
+│       ├── generation.py     # рендер и маски
+│       ├── validation.py     # проверка датасета
+│       ├── hub.py            # публикация на Hugging Face
+│       └── cli.py            # prepare → synthesize → validate → push
+├── run_miner.py              # совместимая обёртка старого entrypoint
+├── synthesize_pairs.py       # совместимая обёртка старого entrypoint
 ├── pyproject.toml            # пакет и зависимости для uv/pip
 ├── .env.example              # шаблон конфигурации
 ├── Dockerfile
@@ -159,6 +167,17 @@ uv run pytest
 uv run ruff check .
 ```
 
+Установка и ручной запуск pre-commit:
+
+```bash
+uv sync --extra dev
+uv run pre-commit install --hook-type pre-commit --hook-type pre-push
+uv run pre-commit run --all-files
+```
+
+На каждом commit запускаются проверки файлов, Ruff lint/format и mypy. Полный
+pytest запускается перед push.
+
 Тесты не обращаются к TMDB, Telegram или Hugging Face.
 
 ## Docker
@@ -176,12 +195,27 @@ docker run --rm \
 
 ## Synthetic IIMT dataset
 
-Независимый Hydra-pipeline создаёт мультиязычные варианты на общей Bezier-кривой,
+Независимый Hydra-pipeline скачивает официальный MASSIVE 1.1, собирает короткие
+многоязычные группы по исходному `id`, создаёт варианты на общей Bezier-кривой,
 проверяет датасет и при необходимости публикует его в Hugging Face.
 
 ```bash
 uv sync --extra dev
 uv run iimt-synthesize
+```
+
+По умолчанию выполняется:
+
+```text
+prepare → synthesize → validate
+```
+
+Архив сохраняется в `data/cache/`, а подготовленные группы — в
+`data/massive_translations.jsonl`. Повторный запуск переиспользует оба файла.
+Принудительная пересборка текста:
+
+```bash
+uv run iimt-synthesize prepare.force=true
 ```
 
 Собственные мультиязычные группы передаются в JSONL:
@@ -192,6 +226,7 @@ uv run iimt-synthesize
 
 ```bash
 uv run iimt-synthesize \
+  'pipeline.steps=[synthesize,validate]' \
   input.translations=/data/translations.jsonl \
   input.backgrounds_dir=/data/backgrounds \
   output.dir=synthetic_dataset \
@@ -204,6 +239,9 @@ uv run iimt-synthesize \
 synthetic_dataset/
 ├── assets.jsonl
 ├── pairs.jsonl
+├── causal_pairs.jsonl
+├── rejected.jsonl
+├── quality_report.json
 ├── images/
 ├── backgrounds/
 ├── glyph_masks/
@@ -211,15 +249,32 @@ synthetic_dataset/
 └── baseline_masks/
 ```
 
+Для каждого языка подбирается TTF/OTF/TTC-шрифт. Язык без полного покрытия
+символов пропускается отдельно; family отклоняется только тогда, когда осталось
+меньше двух языков. Число таких вариантов записывается как
+`skipped_missing_font_assets`, а полностью отклонённые family попадают в
+`rejected.jsonl`. Доля и причины отбраковки записываются в
+`quality_report.json`. По умолчанию отдельные отбраковки не останавливают
+джобу; строгий порог включается через `quality.fail_on_excess_rejections=true`.
+Первая отбраковка и затем каждые `quality.log_every_rejections` family явно
+печатаются в stdout как `WARNING`; прогресс также содержит accepted/rejected.
+
 Split назначается по исходному `base_family_id`, поэтому языки и варианты одной
 фразы не пересекаются между train, validation и test. `validate` проверяет ID,
 файлы, размеры, общую геометрию, маски, пары и split leakage.
 
-Публикация создаёт две HF-конфигурации: `assets` с изображениями и supervision,
-и `pairs` с лёгким индексом направленных пар:
+Для каждой исходной family создаются четыре контролируемых состояния:
+`reference`, `do_style`, `do_layout` и `do_background`. Внутри состояния
+все языки разделяют `style_id`, `layout_id` и `background_id`;
+`causal_pairs.jsonl` связывает reference с интервенцией того же языка.
+Валидатор требует, чтобы в такой паре изменялся ровно один заявленный фактор.
+
+Публикация создаёт три HF-конфигурации: `assets` с изображениями и supervision,
+`pairs` с переводными парами и `causal_pairs` с однофакторными интервенциями:
 
 ```bash
-export HF_TOKEN=hf_...
+cp secrets.example.json secrets.json
+# Впишите write-токен в поле hf_token; secrets.json игнорируется Git.
 export HF_DATASET_REPO=username/iimt-synthetic
 
 uv run iimt-synthesize \
@@ -227,6 +282,40 @@ uv run iimt-synthesize \
   output.dir=synthetic_dataset
 ```
 
-Hydra-конфиг находится в `tmdb_iimt_miner/conf/synthesize.yaml`. Текущий renderer
+Формат `secrets.json`:
+
+```json
+{
+  "hf_token": "hf_your_write_token",
+  "hf_dataset_repo": "username/iimt-synthetic"
+}
+```
+
+Путь и имена полей настраиваются через `hf.credentials_file`, `hf.token_key`
+и `hf.repo_key`.
+Токен также можно передать через `hf.token` или переменную `HF_TOKEN`.
+
+### MLC job
+
+Перед отправкой добавьте `hf_dataset_repo` в локальный `secrets.json`. Файл
+передаётся в контейнер как часть custom preset context, но игнорируется Git.
+
+```bash
+mlc job submit \
+  -p trs \
+  -d \
+  --preset-file presets/synthesize.yaml \
+  --custom-preset-context ./
+```
+
+MLC preset публикует датасет под именем `iimt-synthetic` в аккаунт владельца
+токена. Для другого имени передайте Hydra override `hf.repo=owner/name` в
+команде внутри preset.
+
+Preset использует `16cpu-128ram` в `cloud-ru`, запускает полный pipeline
+`prepare → synthesize → validate → push` и сохраняет `/workdir/outputs` в
+bucket `trs-istatsenko` по префиксу `/iimt/synthetic/outputs`.
+
+Hydra-конфиг находится в `iimt/conf/synthesize.yaml`. Текущий renderer
 поддерживает латиницу, кириллицу, греческий, CJK и корейский; сложные RTL/shaping
 письменности по умолчанию пропускаются, чтобы не загрязнять обучающие данные.

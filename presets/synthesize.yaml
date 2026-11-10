@@ -1,0 +1,79 @@
+job:
+  generate_name: iimt-synthetic
+  flavor: 16cpu-128ram
+  region: cloud-ru
+  priority: medium
+  time_limit: 48h
+  image: docker-hosted.artifactory.tcsbank.ru/trs/cuda13.1.1-cudnn-devel-ubuntu22.04-python3.12:1.38
+  work_dir: /workdir
+  args:
+    - bash
+    - -c
+    - |
+      set -euo pipefail
+
+      apt-get update -qq
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        fontconfig \
+        fonts-noto-core \
+        fonts-noto-cjk
+      fc-cache -f
+
+      if ! command -v uv >/dev/null 2>&1; then
+        python -m pip install uv \
+          --index-url https://artifactory.tcsbank.ru/artifactory/api/pypi/python-all/simple/
+      fi
+
+      test -s /workdir/secrets.json || {
+        echo "ERROR: /workdir/secrets.json is missing"
+        exit 2
+      }
+      python - <<'PY'
+      import json
+      from pathlib import Path
+
+      path = Path("/workdir/secrets.json")
+      secrets = json.loads(path.read_text(encoding="utf-8"))
+      token = str(secrets.get("hf_token", ""))
+      repo = str(secrets.get("hf_dataset_repo", ""))
+      if not token.startswith("hf_"):
+          raise SystemExit("ERROR: replace hf_token placeholder in secrets.json")
+      if "/" not in repo:
+          raise SystemExit("ERROR: hf_dataset_repo must have form username/dataset")
+      print(f"Secrets validated; target HF dataset: {repo}")
+      PY
+
+      uv --quiet --system-certs sync --frozen
+      uv run iimt-synthesize \
+        'pipeline.steps=[prepare,synthesize,validate,push]' \
+        prepare.max_groups=1000 \
+        output.dir=/workdir/outputs/synthetic_dataset \
+        hf.credentials_file=/workdir/secrets.json \
+        quality.quarantine_unexpected_errors=true \
+        quality.fail_on_excess_rejections=false \
+        quality.log_every_rejections=25
+  env:
+    HF_HOME: /workdir/.cache/huggingface
+    UV_CACHE_DIR: /workdir/.cache/uv
+    POLARS_MAX_THREADS: "14"
+    OMP_NUM_THREADS: "1"
+    MKL_NUM_THREADS: "1"
+    OPENBLAS_NUM_THREADS: "1"
+    NUMEXPR_NUM_THREADS: "1"
+  notify:
+    - target: none
+  input:
+    - type: files
+      src: ./
+      dst: /workdir
+      mask: "**/*"
+      ignore_mask: ".git;.git/**/*;secrets.json;**/__pycache__/**/*;**/*.pyc;**/*.pyo;**/*.pyd;.pytest_cache;.pytest_cache/**/*;.ruff_cache;.ruff_cache/**/*;.mypy_cache;.mypy_cache/**/*;.cache;.cache/**/*;.coverage;.coverage.*;htmlcov;htmlcov/**/*;coverage.xml;.venv;.venv/**/*;venv;venv/**/*;env;env/**/*;build;build/**/*;dist;dist/**/*;*.egg-info;*.egg-info/**/*;.eggs;.eggs/**/*;.env;.env.*;tmdb_dataset;tmdb_dataset/**/*;synthetic_dataset;synthetic_dataset/**/*;synthetic_test;synthetic_test/**/*;data/cache;data/cache/**/*;data/massive_translations.jsonl;outputs;outputs/**/*;multirun;multirun/**/*;*.sqlite;*.sqlite-wal;*.sqlite-shm;*.sqlite-journal;*.log;.idea;.idea/**/*;.vscode;.vscode/**/*;.DS_Store;Thumbs.db"
+    - type: files
+      src: ./
+      dst: /workdir
+      mask: "secrets.json"
+  output:
+    - type: s3msk
+      src: /workdir/outputs
+      bucket: trs-istatsenko
+      dst: /iimt/synthetic/outputs

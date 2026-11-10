@@ -1,0 +1,126 @@
+defaults:
+  - _self_
+
+pipeline:
+  steps: [prepare, synthesize, validate]
+
+prepare:
+  url: https://amazon-massive-nlu-dataset.s3.amazonaws.com/amazon-massive-dataset-1.1.tar.gz
+  archive_path: data/cache/amazon-massive-dataset-1.1.tar.gz
+  output_path: data/massive_translations.jsonl
+  force: false
+  partitions: [train, dev, test]
+  locales:
+    - af-ZA
+    - az-AZ
+    - ca-ES
+    - cy-GB
+    - da-DK
+    - de-DE
+    - el-GR
+    - en-US
+    - es-ES
+    - fi-FI
+    - fr-FR
+    - hu-HU
+    - id-ID
+    - is-IS
+    - it-IT
+    - ja-JP
+    - jv-ID
+    - ko-KR
+    - lv-LV
+    - mn-MN
+    - ms-MY
+    - nb-NO
+    - nl-NL
+    - pl-PL
+    - pt-PT
+    - ro-RO
+    - ru-RU
+    - sl-SL
+    - sq-AL
+    - sv-SE
+    - sw-KE
+    - tl-PH
+    - tr-TR
+    - vi-VN
+    - zh-CN
+    - zh-TW
+  min_words: 2
+  max_words: 10
+  max_characters: 80
+  min_languages_per_group: 3
+  max_groups: null
+
+input:
+  translations: ${prepare.output_path}
+  backgrounds_dir: data/backgrounds
+
+output:
+  dir: synthetic_dataset
+  manifest: assets.jsonl
+  pairs_manifest: pairs.jsonl
+  causal_pairs_manifest: causal_pairs.jsonl
+  rejected_manifest: rejected.jsonl
+  quality_report: quality_report.json
+
+generation:
+  seed: 42
+  num_workers: 0
+  reserve_cpus: 2
+  width: 768
+  height: 512
+  font_paths: []
+  font_family: NotoSans
+  min_font_size: 16
+  max_font_size: 84
+  curve_amplitude_min: 20
+  curve_amplitude_max: 100
+  margin: 64
+  stroke_width: 2
+  shadow_offset: 4
+  region_width: 190
+  region_padding: 8
+  image_safe_margin: 2
+  placement_attempts: 24
+  unsupported_script_policy: skip
+
+interventions:
+  plan:
+    - {name: reference, intervention_type: observational, changed_factor: none, style_level: 0, layout_level: 0, background_level: 0}
+    - {name: do_style, intervention_type: intervention, changed_factor: style, style_level: 1, layout_level: 0, background_level: 0}
+    - {name: do_layout, intervention_type: intervention, changed_factor: layout, style_level: 0, layout_level: 1, background_level: 0}
+    - {name: do_background, intervention_type: intervention, changed_factor: background, style_level: 0, layout_level: 0, background_level: 1}
+
+split:
+  train: 0.90
+  validation: 0.05
+  test: 0.05
+  seed: 42
+
+pairing:
+  mode: pivot
+  pivot_languages: [en-US, en]
+  bidirectional: true
+
+quality:
+  max_rejected_fraction: 0.02
+  fail_on_excess_rejections: false
+  quarantine_unexpected_errors: true
+  log_every_rejections: 25
+
+hf:
+  repo: null
+  token: null
+  credentials_file: secrets.json
+  token_key: hf_token
+  repo_key: hf_dataset_repo
+  private: true
+  max_shard_size: 1GB
+
+hydra:
+  job:
+    chdir: false
+  run:
+    dir: outputs/hydra/${now:%Y-%m-%d}/${now:%H-%M-%S}

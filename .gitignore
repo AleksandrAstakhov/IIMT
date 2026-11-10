@@ -4,6 +4,7 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.cache/
 .coverage
 .coverage.*
 htmlcov/
@@ -23,13 +24,17 @@ dist/
 # Local secrets (keep example templates)
 .env
 .env.*
+secrets.json
 !.env.example
 !.env.*.example
+!secrets.example.json
 
 # Miner data and Hydra runs
 /tmdb_dataset/
 /synthetic_dataset/
 /synthetic_test/
+/data/cache/
+/data/massive_translations.jsonl
 /outputs/
 /multirun/
 *.sqlite

@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10,<3.14"
 dependencies = [
   "datasets>=3.2,<5",
+  "fonttools>=4.55,<5",
   "hydra-core>=1.3,<2",
   "huggingface-hub>=0.34,<2",
   "ImageHash>=4.3,<5",
@@ -21,22 +22,25 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "mypy>=1.15,<2",
+  "pre-commit>=4,<5",
   "pytest>=8,<10",
   "ruff>=0.8,<1",
+  "types-requests>=2.32,<3",
 ]
 
 [project.scripts]
-tmdb-iimt-mine = "run_miner:main"
-iimt-synthesize = "synthesize_pairs:main"
+tmdb-iimt-mine = "iimt.miner.cli:main"
+iimt-synthesize = "iimt.synthetic.cli:main"
 
 [tool.setuptools]
-py-modules = ["tmdb_asset_miner", "tmdb_pair_miner", "run_miner", "synthesize_pairs"]
+py-modules = ["tmdb_asset_miner", "run_miner", "synthesize_pairs"]
 
 [tool.setuptools.packages.find]
-include = ["tmdb_iimt_miner*"]
+include = ["iimt*"]
 
 [tool.setuptools.package-data]
-"tmdb_iimt_miner.conf" = ["*.yaml"]
+"iimt.conf" = ["*.yaml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -44,6 +48,19 @@ testpaths = ["tests"]
 [tool.ruff]
 line-length = 110
 target-version = "py310"
+extend-exclude = [".cache"]
 
 [tool.ruff.lint]
 select = ["F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["iimt", "run_miner.py", "synthesize_pairs.py", "tmdb_asset_miner.py"]
+exclude = "(^|/)(\\.venv|\\.cache|outputs|synthetic_dataset)/"
+check_untyped_defs = true
+follow_imports = "skip"
+ignore_missing_imports = true
+no_implicit_optional = true
+show_error_codes = true
+warn_redundant_casts = true
+warn_unused_ignores = true

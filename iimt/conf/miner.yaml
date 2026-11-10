@@ -33,7 +33,7 @@ hf:
   repo: null
   private: true
   export_id: default
-  rows_per_shard: 5000
+  rows_per_shard: 500
 
 telegram:
   progress_every: ${oc.decode:${oc.env:TELEGRAM_PROGRESS_EVERY,100}}
